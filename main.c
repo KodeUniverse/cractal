@@ -42,9 +42,10 @@ int main(void) {
     Camera2D camera = {0};
     camera.zoom = 1.0f;
 
+    Texture mandel_texture = create_mandelbrot_texture(&plane, max_iter);
+
     while (!WindowShouldClose()) {
         // Update
-
         // click and drag
         if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
             Vector2 delta = GetMouseDelta();
@@ -77,11 +78,14 @@ int main(void) {
         BeginDrawing();
         BeginMode2D(camera);
         ClearBackground(BACKGROUND_COLOR);
-
-        render_mandelbrot(&plane, max_iter);
+        DrawTexture(mandel_texture, 0, 0, WHITE);
+        // render_mandelbrot(&plane, max_iter);
         EndMode2D();
         EndDrawing();
     }
 
+    CloseWindow();
+    destroy_plane2(&plane);
+    UnloadTexture(mandel_texture);
     return 0;
 }
