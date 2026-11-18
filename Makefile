@@ -6,8 +6,8 @@ RAYLIB_CFLAGS := $(shell $(PKG_CONFIG) --cflags raylib)
 RAYLIB_LIBS := $(shell $(PKG_CONFIG) --libs raylib)
 LDLIBS ?= -lm
 
-SOURCES := main.c fractal.c plane.c render.c
-HEADERS := fractal.h plane.h render.h
+SOURCES := src/*.c 
+HEADERS := src/*.h 
 TARGET := cractal 
 
 .PHONY: all clean
