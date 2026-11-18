@@ -30,8 +30,8 @@ int terminal_render() {
 
 int main(void) {
 
-    const int screen_width = 2560;
-    const int screen_height = 1440;
+    const int screen_width = 1920;
+    const int screen_height = 1080;
 
     int max_iter = 1000;
     CoordinatePlane2 plane = create_plane2(screen_width, screen_height);
@@ -43,6 +43,8 @@ int main(void) {
     camera.zoom = 1.0f;
 
     Texture mandel_texture = create_mandelbrot_texture(&plane, max_iter);
+
+    destroy_plane2(&plane);
 
     while (!WindowShouldClose()) {
         // Update
@@ -84,8 +86,7 @@ int main(void) {
         EndDrawing();
     }
 
-    CloseWindow();
-    destroy_plane2(&plane);
     UnloadTexture(mandel_texture);
+    CloseWindow();
     return 0;
 }
