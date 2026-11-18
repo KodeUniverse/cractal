@@ -1,6 +1,7 @@
 #include "fractal.h"
 #include "plane.h"
 #include "raylib.h"
+#include "raymath.h"
 #include "render.h"
 #include <stdio.h>
 
@@ -38,16 +39,47 @@ int main(void) {
 
     InitWindow(screen_width, screen_height, "Cractal");
     SetTargetFPS(60);
+    Camera2D camera = {0};
+    camera.zoom = 1.0f;
 
     while (!WindowShouldClose()) {
         // Update
 
+        // click and drag
+        if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+            Vector2 delta = GetMouseDelta();
+            delta = Vector2Scale(delta, -1.0f / camera.zoom);
+            camera.target = Vector2Add(camera.target, delta);
+        }
+
+        Vector2 render_scale = {(float)GetRenderWidth() / screen_width,
+                                (float)GetRenderHeight() / screen_height};
+
+        // mouse wheel zoom
+        float wheel = GetMouseWheelMove();
+        if (wheel != 0) {
+            Vector2 mouse_world_pos = GetScreenToWorld2D(
+                GetMousePosition(),
+                camera); // get world point location of cursor
+            camera.offset = Vector2Multiply(
+                GetMousePosition(),
+                render_scale); // set offset to mouse position. mouse is scaled
+                               // to viewport space, but offset is in unscaled
+                               // pixels.
+            // set camera target to cursor position for zooming
+            camera.target = mouse_world_pos;
+
+            // zoom
+            float scale = 0.2f * wheel;
+            camera.zoom = Clamp(expf(logf(camera.zoom) + scale), 0.125f, 64.0f);
+        }
         // Draw
         BeginDrawing();
-
+        BeginMode2D(camera);
         ClearBackground(BACKGROUND_COLOR);
 
         render_mandelbrot(&plane, max_iter);
+        EndMode2D();
         EndDrawing();
     }
 
