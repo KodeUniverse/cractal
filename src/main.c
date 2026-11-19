@@ -33,20 +33,26 @@ int main(void) {
     const int screen_width = 2560;
     const int screen_height = 1440;
 
-    int max_iter = 1000;
-    CoordinatePlane2 plane = create_plane2(screen_width, screen_height);
-    // graph_mandelbrot(&plane, -2, 2, -1, 1, max_iter);
-    graph_julia(&plane, .35 + .35 * I, -1.5, 1.5, -.75, .75, max_iter);
+    const FractalView view = {
+        .width = screen_width,
+        .height = screen_height,
+        .re_min = -2,
+        .re_max = 2,
+        .im_min = -1,
+        .im_max = 1,
+        .max_iter = 5000,
+    };
 
     InitWindow(screen_width, screen_height, "Cractal");
     SetTargetFPS(60);
     Camera2D camera = {0};
     camera.zoom = 1.0f;
 
-    Texture fractal_texture = create_fractal_texture(&plane, max_iter);
-
-    destroy_plane2(&plane);
-
+    Texture fractal_texture = create_mandelbrot_texture(&view);
+    if (fractal_texture.id == 0) {
+        CloseWindow();
+        return 1;
+    }
     while (!WindowShouldClose()) {
         // Update
         // click and drag
@@ -82,7 +88,6 @@ int main(void) {
         BeginMode2D(camera);
         ClearBackground(BACKGROUND_COLOR);
         DrawTexture(fractal_texture, 0, 0, WHITE);
-        // render_mandelbrot(&plane, max_iter);
         EndMode2D();
         EndDrawing();
     }
