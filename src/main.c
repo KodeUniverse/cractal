@@ -1,8 +1,9 @@
 #include "fractal.h"
 #include "plane.h"
 #include "raylib.h"
-#include "raymath.h"
 #include "render.h"
+#include <math.h>
+#include <stdbool.h>
 #include <stdio.h>
 
 const struct Color BACKGROUND_COLOR = RAYWHITE;
@@ -28,67 +29,88 @@ int terminal_render() {
     return 0;
 }
 
+static void update_view_bounds(FractalView *view, double re_center,
+                               double im_center, double s) {
+    double half_re = (double)(view->width - 1) * s / 2.0;
+    double half_im = (double)(view->height - 1) * s / 2.0;
+
+    view->re_min = re_center - half_re;
+    view->re_max = re_center + half_re;
+    view->im_min = im_center - half_im;
+    view->im_max = im_center + half_im;
+}
+
 int main(void) {
 
     const int screen_width = 2560;
     const int screen_height = 1440;
 
-    const FractalView view = {
+    FractalView view = {
         .width = screen_width,
         .height = screen_height,
         .re_min = -2,
         .re_max = 2,
         .im_min = -1,
         .im_max = 1,
-        .max_iter = 5000,
+        .max_iter = 1000,
     };
+
+    double re_center = (view.re_min + view.re_max) / 2.0;
+    double im_center = (view.im_min + view.im_max) / 2.0;
+    double s = (view.re_max - view.re_min) / (view.width - 1);
+    update_view_bounds(&view, re_center, im_center, s);
 
     InitWindow(screen_width, screen_height, "Cractal");
     SetTargetFPS(60);
-    Camera2D camera = {0};
-    camera.zoom = 1.0f;
 
     Texture fractal_texture = create_mandelbrot_texture(&view);
+
     if (fractal_texture.id == 0) {
         CloseWindow();
         return 1;
     }
+
+    bool view_changed = false;
     while (!WindowShouldClose()) {
         // Update
-        // click and drag
-        if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+        bool dragging = IsMouseButtonDown(MOUSE_LEFT_BUTTON);
+        if (dragging) {
             Vector2 delta = GetMouseDelta();
-            delta = Vector2Scale(delta, -1.0f / camera.zoom);
-            camera.target = Vector2Add(camera.target, delta);
+
+            if (delta.x != 0.0f || delta.y != 0.0f) {
+                re_center -= (double)delta.x * s;
+                im_center += (double)delta.y * s;
+                view_changed = true;
+            }
         }
 
-        Vector2 render_scale = {(float)GetRenderWidth() / screen_width,
-                                (float)GetRenderHeight() / screen_height};
-
-        // mouse wheel zoom
         float wheel = GetMouseWheelMove();
         if (wheel != 0) {
-            Vector2 mouse_world_pos = GetScreenToWorld2D(
-                GetMousePosition(),
-                camera); // get world point location of cursor
-            camera.offset = Vector2Multiply(
-                GetMousePosition(),
-                render_scale); // set offset to mouse position. mouse is scaled
-                               // to viewport space, but offset is in unscaled
-                               // pixels.
-            // set camera target to cursor position for zooming
-            camera.target = mouse_world_pos;
-
-            // zoom
-            float scale = 0.2f * wheel;
-            camera.zoom = Clamp(expf(logf(camera.zoom) + scale), 0.125f, 64.0f);
+            double zoom_delta = 0.2 * (double)wheel;
+            double new_s = s * exp(-zoom_delta);
+            if (new_s > 0.0 && isfinite(new_s) && new_s != s) {
+                s = new_s;
+                view_changed = true;
+            }
         }
+
+        // Wait until dragging ends instead of recalculating every drag frame.
+        if (view_changed && !dragging) {
+            update_view_bounds(&view, re_center, im_center, s);
+            Texture new_texture = create_mandelbrot_texture(&view);
+            if (new_texture.id != 0) {
+                UnloadTexture(fractal_texture);
+                fractal_texture = new_texture;
+            } else {
+                fprintf(stderr, "Could not create fractal texture.\n");
+            }
+            view_changed = false;
+        }
+
         // Draw
         BeginDrawing();
-        BeginMode2D(camera);
         ClearBackground(BACKGROUND_COLOR);
         DrawTexture(fractal_texture, 0, 0, WHITE);
-        EndMode2D();
         EndDrawing();
     }
 
