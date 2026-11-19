@@ -60,7 +60,7 @@ void render_mandelbrot(CoordinatePlane2 *plane, int max_iter) {
     }
 }
 
-Texture create_mandelbrot_texture(CoordinatePlane2 *plane, int max_iter) {
+Texture create_fractal_texture(CoordinatePlane2 *plane, int max_iter) {
     // create and fill pixel grid
     RenderGrid2D px_grid = create_render_grid2(plane->width, plane->height);
     for (size_t py = 0; py < plane->height; py++) {
