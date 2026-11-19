@@ -5,6 +5,6 @@
 #include "raylib.h"
 
 void render_mandelbrot(CoordinatePlane2 *plane, int max_iter);
-Texture create_mandelbrot_texture(CoordinatePlane2 *plane, int max_iter);
+Texture create_fractal_texture(CoordinatePlane2 *plane, int max_iter);
 
 #endif
