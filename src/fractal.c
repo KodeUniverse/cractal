@@ -1,7 +1,9 @@
 #include "fractal.h"
 #include "plane.h"
+#include "raylib.h"
 #include <complex.h>
 #include <stddef.h>
+#include <stdio.h>
 
 static int mandelbrot(double complex c, int max_iter) {
     double complex z = 0;
@@ -15,6 +17,8 @@ static int mandelbrot(double complex c, int max_iter) {
 
 void graph_mandelbrot(CoordinatePlane2 *plane, double re_min, double re_max,
                       double im_min, double im_max, int fractal_max_iter) {
+
+    double start_time = GetTime();
 
     if (plane == NULL || plane->points == NULL || plane->width < 2 ||
         plane->height < 2)
@@ -31,6 +35,8 @@ void graph_mandelbrot(CoordinatePlane2 *plane, double re_min, double re_max,
                 mandelbrot(re + im * I, fractal_max_iter);
         }
     }
+    printf("DEBUG: Finished mandelbrot graph calculation in %fs\n",
+           GetTime() - start_time);
 }
 
 static int julia(double complex z, double complex c, int max_iter) {
