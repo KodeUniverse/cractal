@@ -34,8 +34,8 @@ int main(void) {
     const int screen_height = 1440;
 
     const FractalView view = {
-        .width = screen_width,
-        .height = screen_height,
+        .width = screen_width * 6,
+        .height = screen_height * 6,
         .re_min = -2,
         .re_max = 2,
         .im_min = -1,
@@ -46,13 +46,20 @@ int main(void) {
     InitWindow(screen_width, screen_height, "Cractal");
     SetTargetFPS(60);
     Camera2D camera = {0};
-    camera.zoom = 1.0f;
 
     Texture fractal_texture = create_mandelbrot_texture(&view);
     if (fractal_texture.id == 0) {
         CloseWindow();
         return 1;
     }
+
+    camera.offset = (Vector2){screen_width / 2.0f, screen_height / 2.0f};
+    camera.target = (Vector2){fractal_texture.width / 2.0f,
+                              fractal_texture.height / 2.0f};
+    float zoom_x = (float)screen_width / fractal_texture.width;
+    float zoom_y = (float)screen_height / fractal_texture.height;
+    camera.zoom = zoom_x < zoom_y ? zoom_x : zoom_y;
+
     while (!WindowShouldClose()) {
         // Update
         // click and drag

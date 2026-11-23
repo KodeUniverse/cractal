@@ -1,7 +1,10 @@
 #include "fractal.h"
 #include "plane.h"
 #include <complex.h>
+#include <iso646.h>
+#include <pthread.h>
 #include <stddef.h>
+#define NUM_THREADS 16
 
 static int mandelbrot(double complex c, int max_iter) {
     double complex z = 0;
@@ -13,6 +16,38 @@ static int mandelbrot(double complex c, int max_iter) {
     return max_iter; // never escaped: assume c is inside the set
 }
 
+struct MandelbrotWorkerArgs {
+    CoordinatePlane2 *plane;
+    size_t row_start, row_end;
+    double re_min, re_max, im_min, im_max;
+    int max_iter;
+};
+
+static void *mandelbrot_worker(void *arg) {
+
+    struct MandelbrotWorkerArgs *args = arg;
+    double re_min, re_max, im_min, im_max;
+    re_min = args->re_min;
+    re_max = args->re_max;
+    im_min = args->im_min;
+    im_max = args->im_max;
+    int max_iter = args->max_iter;
+    CoordinatePlane2 *plane = args->plane;
+
+    double re_step = (re_max - re_min) / (plane->width - 1);
+    double im_step = (im_max - im_min) / (plane->height - 1);
+
+    for (size_t py = args->row_start; py < args->row_end; py++) {
+        for (size_t px = 0; px < plane->width; px++) {
+            double re = re_min + px * re_step;
+            double im = im_max - py * im_step;
+            plane->points[py * plane->width + px] =
+                mandelbrot(re + im * I, max_iter);
+        }
+    }
+    return NULL;
+}
+
 void graph_mandelbrot(CoordinatePlane2 *plane, double re_min, double re_max,
                       double im_min, double im_max, int fractal_max_iter) {
 
@@ -20,16 +55,24 @@ void graph_mandelbrot(CoordinatePlane2 *plane, double re_min, double re_max,
         plane->height < 2)
         return;
 
-    double re_step = (re_max - re_min) / (plane->width - 1);
-    double im_step = (im_max - im_min) / (plane->height - 1);
-    // row major order
-    for (size_t py = 0; py < plane->height; py++) {
-        for (size_t px = 0; px < plane->width; px++) {
-            double re = re_min + px * re_step;
-            double im = im_max - py * im_step;
-            plane->points[py * plane->width + px] =
-                mandelbrot(re + im * I, fractal_max_iter);
-        }
+    pthread_t threads[NUM_THREADS];
+    struct MandelbrotWorkerArgs params[NUM_THREADS];
+    for (int i = 0; i < NUM_THREADS; i++) {
+
+        params[i] = (struct MandelbrotWorkerArgs){
+            .plane = plane,
+            .row_start = (size_t)i * plane->height / NUM_THREADS,
+            .row_end = (size_t)(i + 1) * plane->height / NUM_THREADS,
+            .re_max = re_max,
+            .re_min = re_min,
+            .im_max = im_max,
+            .im_min = im_min,
+            .max_iter = fractal_max_iter};
+        pthread_create(&threads[i], NULL, mandelbrot_worker, &params[i]);
+    }
+
+    for (int i = 0; i < NUM_THREADS; i++) {
+        pthread_join(threads[i], NULL);
     }
 }
 
