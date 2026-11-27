@@ -37,9 +37,9 @@ int main(void) {
             .re_max   = 2,
             .im_min   = -1,
             .im_max   = 1,
-            .max_iter = 8000,
+            .max_iter = 50000,
         },
-        .c = 0.35 + 0.35 * I,
+        .c = 0.285 + 0.01*I
     };
     BaseFractalParam *view = &julia.base;
 
@@ -54,7 +54,7 @@ int main(void) {
     RenderTexture2D full_render = LoadRenderTexture(screen_width, screen_height);
     bool full_render_valid = false;
 
-    const int    PREVIEW_ITER        = 2000;
+    const int    PREVIEW_ITER        = 20000;
     const double RENDER_SETTLE_DELAY = 0.2;
     double last_view_change_time = GetTime();
 

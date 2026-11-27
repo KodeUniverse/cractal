@@ -33,8 +33,13 @@ Files:
 - `src/shaders/mandelbrot.fs`: the Mandelbrot fragment shader (GLSL 330). It
   takes `max_iter`, `screen_dims`, and `actual_plane_bounds` (vec4 with
   xy = re_min/re_max and zw = im_min/im_max). It maps each pixel to `c`,
-  iterates `z = z*z + c` from `z = 0`, and colors by a log-scaled escape count
-  (blue to red; black if it never escapes).
+  iterates `z = z*z + c` from `z = 0`, and colors by a smooth escape count
+  (escape radius 256, `nu = i + 1 - log2(ln|z|)`) and maps it to a color with
+  `COLOR_SCHEME`. Black if it never escapes. Two schemes are defined in each
+  shader: `scheme_navy_orange` (the default, monotonic) and `scheme_rainbow`
+  (cosine, wraps every 20 iterations). To switch, change the `#define
+  COLOR_SCHEME` line in both `mandelbrot.fs` and `julia.fs`. Scales are fixed,
+  not divided by `max_iter`, so preview and full render colors match.
 - `src/shaders/julia.fs`: the Julia fragment shader. It is a copy of the
   Mandelbrot shader, except `z` starts at the pixel's coordinate, `c` is read
   from the `julia_c` uniform (vec2), and it iterates with that constant `c`.
@@ -52,7 +57,7 @@ Files:
 Data flow: the pixel-to-complex-number mapping and the escape-count loop run
 on the GPU in the fragment shader. C only sets the uniforms, which are the
 bounds, the image size, `max_iter`, and (for Julia) `c`. Mandelbrot and Julia
-use the same color function and the same uniform names, so a change to one
+use the same coloring code and the same uniform names, so a change to one
 shader's coloring or bounds mapping should usually be made to the other too.
 
 Known limits to keep in mind:
