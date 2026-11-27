@@ -1,105 +1,41 @@
 #include "fractal.h"
-#include "plane.h"
-#include <complex.h>
-#include <iso646.h>
-#include <pthread.h>
 #include <stddef.h>
-#define NUM_THREADS 16
 
-static int mandelbrot(double complex c, int max_iter) {
-    double complex z = 0;
-    for (int i = 0; i < max_iter; i++) {
-        if (creal(z) * creal(z) + cimag(z) * cimag(z) > 4.0)
-            return i; // escaped: c is outside the set
-        z = z * z + c;
-    }
-    return max_iter; // never escaped: assume c is inside the set
+static FractalShader load_fractal_shader(const char *path) {
+    FractalShader f;
+    f.shader       = LoadShader(NULL, path);
+    f.max_iter_loc = GetShaderLocation(f.shader, "max_iter");
+    f.dims_loc     = GetShaderLocation(f.shader, "screen_dims");
+    f.bounds_loc   = GetShaderLocation(f.shader, "actual_plane_bounds");
+    return f;
 }
 
-struct MandelbrotWorkerArgs {
-    CoordinatePlane2 *plane;
-    size_t row_start, row_end;
-    double re_min, re_max, im_min, im_max;
-    int max_iter;
-};
+void update_fractal_shader(FractalShader *s, const BaseFractalParam *p) {
+    float dims[2]   = { (float)p->width, (float)p->height };
+    float bounds[4] = { (float)p->re_min, (float)p->re_max,
+                        (float)p->im_min, (float)p->im_max };
+    int max_iter = p->max_iter;
 
-static void *mandelbrot_worker(void *arg) {
-
-    struct MandelbrotWorkerArgs *args = arg;
-    double re_min, re_max, im_min, im_max;
-    re_min = args->re_min;
-    re_max = args->re_max;
-    im_min = args->im_min;
-    im_max = args->im_max;
-    int max_iter = args->max_iter;
-    CoordinatePlane2 *plane = args->plane;
-
-    double re_step = (re_max - re_min) / (plane->width - 1);
-    double im_step = (im_max - im_min) / (plane->height - 1);
-
-    for (size_t py = args->row_start; py < args->row_end; py++) {
-        for (size_t px = 0; px < plane->width; px++) {
-            double re = re_min + px * re_step;
-            double im = im_max - py * im_step;
-            plane->points[py * plane->width + px] =
-                mandelbrot(re + im * I, max_iter);
-        }
-    }
-    return NULL;
+    SetShaderValue(s->shader, s->max_iter_loc, &max_iter, SHADER_UNIFORM_INT);
+    SetShaderValue(s->shader, s->dims_loc,     dims,      SHADER_UNIFORM_VEC2);
+    SetShaderValue(s->shader, s->bounds_loc,   bounds,    SHADER_UNIFORM_VEC4);
 }
 
-void graph_mandelbrot(CoordinatePlane2 *plane, double re_min, double re_max,
-                      double im_min, double im_max, int fractal_max_iter) {
-
-    if (plane == NULL || plane->points == NULL || plane->width < 2 ||
-        plane->height < 2)
-        return;
-
-    pthread_t threads[NUM_THREADS];
-    struct MandelbrotWorkerArgs params[NUM_THREADS];
-    for (int i = 0; i < NUM_THREADS; i++) {
-
-        params[i] = (struct MandelbrotWorkerArgs){
-            .plane = plane,
-            .row_start = (size_t)i * plane->height / NUM_THREADS,
-            .row_end = (size_t)(i + 1) * plane->height / NUM_THREADS,
-            .re_max = re_max,
-            .re_min = re_min,
-            .im_max = im_max,
-            .im_min = im_min,
-            .max_iter = fractal_max_iter};
-        pthread_create(&threads[i], NULL, mandelbrot_worker, &params[i]);
-    }
-
-    for (int i = 0; i < NUM_THREADS; i++) {
-        pthread_join(threads[i], NULL);
-    }
+FractalShader load_mandelbrot_shader(const char *path,
+                                     const MandelbrotFractalParams *p) {
+    FractalShader f = load_fractal_shader(path);
+    update_fractal_shader(&f, &p->base);
+    return f;
 }
 
-static int julia(double complex z, double complex c, int max_iter) {
-    for (int i = 0; i < max_iter; i++) {
-        if (creal(z) * creal(z) + cimag(z) * cimag(z) > 4.0)
-            return i; // escaped
-        z = z * z + c;
-    }
-    return max_iter; // never escaped: in the set
-}
+FractalShader load_julia_shader(const char *path, const JuliaFractalParams *p) {
+    FractalShader f = load_fractal_shader(path);
 
-void graph_julia(CoordinatePlane2 *plane, double complex c, double re_min,
-                 double re_max, double im_min, double im_max, int max_iter) {
-    if (plane == NULL || plane->points == NULL || plane->width < 2 ||
-        plane->height < 2)
-        return;
+    // julia_c is Julia-only and does not change per frame, so it is set once here.
+    int c_loc = GetShaderLocation(f.shader, "julia_c");
+    float c[2] = { (float)creal(p->c), (float)cimag(p->c) };
+    SetShaderValue(f.shader, c_loc, c, SHADER_UNIFORM_VEC2);
 
-    double re_step = (re_max - re_min) / (plane->width - 1);
-    double im_step = (im_max - im_min) / (plane->height - 1);
-
-    for (size_t py = 0; py < plane->height; py++) {
-        for (size_t px = 0; px < plane->width; px++) {
-            double re = re_min + px * re_step;
-            double im = im_max - py * im_step;
-            plane->points[py * plane->width + px] =
-                julia(re + im * I, c, max_iter);
-        }
-    }
+    update_fractal_shader(&f, &p->base);
+    return f;
 }

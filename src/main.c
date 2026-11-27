@@ -1,35 +1,11 @@
 #include "fractal.h"
-#include "plane.h"
 #include "raylib.h"
-#include "render.h"
 #include <math.h>
 #include <stdbool.h>
-#include <stdio.h>
 
-const struct Color BACKGROUND_COLOR = RAYWHITE;
+#define BACKGROUND_COLOR RAYWHITE
 
-int terminal_render() {
-
-    CoordinatePlane2 plane = create_plane2(100, 30);
-    if (plane.points == NULL)
-        return 1;
-
-    int max_iter = 50;
-    // oraph_mandelbrot(&plane, -2.5, 1.0, -1.0, 1.0, max_iter);
-    graph_julia(&plane, -0.8 + 0.156 * I, -1.6, 1.6, -0.9, 0.9, 100);
-    for (size_t y = 0; y < plane.height; y++) {
-        for (size_t x = 0; x < plane.width; x++) {
-            int n = (int)plane.points[y * plane.width + x];
-            putchar(n == max_iter ? '#' : n > 10 ? '+' : n > 4 ? '.' : ' ');
-        }
-        putchar('\n');
-    }
-
-    destroy_plane2(&plane);
-    return 0;
-}
-
-static void update_view_bounds(FractalView *view, double re_center,
+static void update_view_bounds(BaseFractalParam *view, double re_center,
                                double im_center, double s) {
     double half_re = (double)(view->width - 1) * s / 2.0;
     double half_im = (double)(view->height - 1) * s / 2.0;
@@ -40,42 +16,47 @@ static void update_view_bounds(FractalView *view, double re_center,
     view->im_max = im_center + half_im;
 }
 
+static void draw_fullscreen_quad(const FractalShader *f, int w, int h) {
+    BeginShaderMode(f->shader);
+        DrawRectangle(0, 0, w, h, WHITE);
+    EndShaderMode();
+}
+
 int main(void) {
-
-    const int screen_width = 2560;
+    const int screen_width  = 2560;
     const int screen_height = 1440;
-    const Rectangle screen_rect = {0, 0, screen_width, screen_height};
-    const Vector2 texture_origin = {0, 0};
-
-    FractalView view = {
-        .width = screen_width,
-        .height = screen_height,
-        .re_min = -2,
-        .re_max = 2,
-        .im_min = -1,
-        .im_max = 1,
-        .max_iter = 8000,
-    };
-
-    double re_center = (view.re_min + view.re_max) / 2.0;
-    double im_center = (view.im_min + view.im_max) / 2.0;
-    double s = (view.re_max - view.re_min) / (view.width - 1);
-    update_view_bounds(&view, re_center, im_center, s);
 
     InitWindow(screen_width, screen_height, "Cractal");
     SetTargetFPS(60);
 
-    Texture fractal_texture = create_mandelbrot_texture(&view);
-    if (fractal_texture.id == 0) {
-        CloseWindow();
-        return 1;
-    }
+    JuliaFractalParams julia = {
+        .base = {
+            .width    = screen_width,
+            .height   = screen_height,
+            .re_min   = -2,
+            .re_max   = 2,
+            .im_min   = -1,
+            .im_max   = 1,
+            .max_iter = 8000,
+        },
+        .c = 0.35 + 0.35 * I,
+    };
+    BaseFractalParam *view = &julia.base;
 
-    const double PREVIEW_INTERVAL = 0.1;
+    double re_center = (view->re_min + view->re_max) / 2.0;
+    double im_center = (view->im_min + view->im_max) / 2.0;
+    double s = (view->re_max - view->re_min) / (view->width - 1);
+    update_view_bounds(view, re_center, im_center, s);
+
+    FractalShader fractal = load_julia_shader("./src/shaders/julia.fs", &julia);
+
+    // Cached full-quality render, redrawn only when the view settles
+    RenderTexture2D full_render = LoadRenderTexture(screen_width, screen_height);
+    bool full_render_valid = false;
+
+    const int    PREVIEW_ITER        = 2000;
     const double RENDER_SETTLE_DELAY = 0.2;
     double last_view_change_time = GetTime();
-    double last_preview_time = GetTime() - PREVIEW_INTERVAL;
-    bool view_changed = false;
 
     while (!WindowShouldClose()) {
         // Update
@@ -84,7 +65,6 @@ int main(void) {
 
         if (dragging) {
             Vector2 delta = GetMouseDelta();
-
             if (delta.x != 0.0f || delta.y != 0.0f) {
                 re_center -= (double)delta.x * s;
                 im_center += (double)delta.y * s;
@@ -104,55 +84,41 @@ int main(void) {
 
         double now = GetTime();
         if (input_changed) {
-            view_changed = true;
+            update_view_bounds(view, re_center, im_center, s);
             last_view_change_time = now;
+            full_render_valid = false;
         }
 
-        // Render a smaller texture periodically during interaction.
-        if (view_changed && input_changed &&
-            now - last_preview_time >= PREVIEW_INTERVAL) {
-            update_view_bounds(&view, re_center, im_center, s);
+        bool settled = !dragging && now - last_view_change_time >= RENDER_SETTLE_DELAY;
 
-            FractalView preview_view = view;
-            preview_view.width = view.width / 4;
-            preview_view.height = view.height / 4;
-
-            Texture preview_texture = create_mandelbrot_texture(&preview_view);
-            if (preview_texture.id != 0) {
-                UnloadTexture(fractal_texture);
-                fractal_texture = preview_texture;
-            } else {
-                fprintf(stderr, "Could not create preview texture.\n");
-            }
-            last_preview_time = now;
-        }
-
-        // Recompute once input settles rather than blocking every drag frame.
-        if (view_changed && !dragging &&
-            now - last_view_change_time >= RENDER_SETTLE_DELAY) {
-            update_view_bounds(&view, re_center, im_center, s);
-            Texture new_texture = create_mandelbrot_texture(&view);
-
-            if (new_texture.id != 0) {
-                UnloadTexture(fractal_texture);
-                fractal_texture = new_texture;
-            } else {
-                fprintf(stderr, "Could not create updated fractal texture.\n");
-            }
-            view_changed = false;
+        // Full-quality render once, after input settles
+        if (settled && !full_render_valid) {
+            update_fractal_shader(&fractal, view);
+            BeginTextureMode(full_render);
+                draw_fullscreen_quad(&fractal, screen_width, screen_height);
+            EndTextureMode();
+            full_render_valid = true;
         }
 
         // Draw
         BeginDrawing();
-        ClearBackground(BACKGROUND_COLOR);
-        Rectangle source_rect = {0, 0, (float)fractal_texture.width,
-                                 (float)fractal_texture.height};
-        DrawTexturePro(fractal_texture, source_rect, screen_rect,
-                       texture_origin, 0.0f, WHITE);
+            ClearBackground(BACKGROUND_COLOR);
+            if (full_render_valid) {
+                // Render textures are stored upside down: negative height flips them
+                Rectangle src = { 0, 0, (float)screen_width, -(float)screen_height };
+                DrawTextureRec(full_render.texture, src, (Vector2){ 0, 0 }, WHITE);
+            } else {
+                // Live low-iteration preview while interacting
+                BaseFractalParam preview = *view;
+                preview.max_iter = PREVIEW_ITER;
+                update_fractal_shader(&fractal, &preview);
+                draw_fullscreen_quad(&fractal, screen_width, screen_height);
+            }
         EndDrawing();
     }
 
-    UnloadTexture(fractal_texture);
+    UnloadRenderTexture(full_render);
+    UnloadShader(fractal.shader);
     CloseWindow();
     return 0;
 }

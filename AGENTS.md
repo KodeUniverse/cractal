@@ -2,36 +2,72 @@
 
 ## Project context
 
-This is a small fractal visualizer written in C. It currently has working
-Mandelbrot and Julia set calculations and a simple terminal display. The next
-goal is to begin rendering with raylib.
+Cractal is a small fractal visualizer written in C with raylib. It is meant to
+be a library for many fractals. Each fractal is a GLSL fragment shader, and
+the C side loads the shader, sets its uniforms, and draws it. There is no CPU
+fractal code anymore.
 
-The repository currently contains:
+Build and run:
 
-- `fractal.c` / `fractal.h`: Mandelbrot and Julia iteration and functions that
-  fill a plane with iteration counts. The complex-number calculations use C's
-  `<complex.h>` support.
-- `plane.c` / `plane.h`: `CoordinatePlane2`, which stores width, height, and a
-  dynamically allocated, row-major `double` array of per-pixel iteration
-  counts. `create_plane2` allocates it and `destroy_plane2` frees it.
-- `main.c`: creates a 100-by-30 plane, currently calculates the Julia set, then
-  maps iteration counts to terminal characters. The Mandelbrot call is
-  commented out. Its display variable is `max_iter = 50`, but the Julia call
-  currently uses a limit of 100; keep this mismatch in mind when discussing
-  the terminal character mapping, and explain it rather than silently changing
-  behavior.
-- `README.md`: project name and an example terminal-rendered fractal; there is
-  currently no checked-in build configuration or documented build command.
+- `make` builds `./cractal` (`make clean` removes it). The Makefile uses
+  `pkg-config` to find raylib (currently 6.2.0 at `/usr/local`) and compiles
+  `src/*.c` with `-std=c11 -Wall -Wextra -lm`.
+- Run from the repository root. The shaders are loaded from relative paths
+  such as `./src/shaders/julia.fs`.
 
-The fractal functions map plane columns/rows to real/imaginary coordinates and
-store how many iterations each point takes to escape. A value equal to the
-iteration limit is treated as not having escaped within that limit. The plane
-is a useful seam between the math and display: prefer building on it when
-introducing raylib, and explain any changes to that data flow.
+Files:
 
-The project owner is learning C and fractal mathematics, especially complex
-numbers. Treat this as a learning project: help them understand the ideas and
-build the implementation themselves.
+- `src/fractal.h` / `src/fractal.c`: the library.
+  - `BaseFractalParam`: width, height, re/im bounds, and `max_iter`. Shared by
+    every fractal.
+  - `MandelbrotFractalParams` and `JuliaFractalParams`: each contains a
+    `BaseFractalParam base`. Julia also has `double complex c`.
+  - `FractalShader`: the loaded `Shader` plus the locations of `max_iter`,
+    `screen_dims`, and `actual_plane_bounds`.
+  - `load_mandelbrot_shader(path, params)` and `load_julia_shader(path, params)`:
+    load the shader, set its uniforms, and return a `FractalShader`. Check
+    `shader.id == 0` to detect a failed load. `load_julia_shader` sets
+    `julia_c` once. That value is kept in the loader, not in `FractalShader`.
+  - `update_fractal_shader(shader, base_params)`: writes the shared uniforms
+    each time it is called. The `max_iter` in the params is used for that draw.
+- `src/shaders/mandelbrot.fs`: the Mandelbrot fragment shader (GLSL 330). It
+  takes `max_iter`, `screen_dims`, and `actual_plane_bounds` (vec4 with
+  xy = re_min/re_max and zw = im_min/im_max). It maps each pixel to `c`,
+  iterates `z = z*z + c` from `z = 0`, and colors by a log-scaled escape count
+  (blue to red; black if it never escapes).
+- `src/shaders/julia.fs`: the Julia fragment shader. It is a copy of the
+  Mandelbrot shader, except `z` starts at the pixel's coordinate, `c` is read
+  from the `julia_c` uniform (vec2), and it iterates with that constant `c`.
+- `src/main.c`: the driver and example of using the library. It builds a
+  `JuliaFractalParams` (2560x1440, re in [-2, 2], im in [-1, 1],
+  `max_iter = 8000`, `c = -0.8 + 0.156i`), loads the Julia shader, and runs the
+  window loop.
+  - While the mouse is moving, it draws a live preview at `PREVIEW_ITER = 2000`.
+  - After input has been idle for 0.2 s, it renders once at `max_iter` into a
+    cached `RenderTexture2D` and draws that until the view changes.
+- `src/shaders/mandelbrot.fs` and `src/shaders/julia.fs` are loaded by path at
+  runtime. They are not compiled into the binary.
+- `README.md`: a short project description and a Julia screenshot.
+
+Data flow: the pixel-to-complex-number mapping and the escape-count loop run
+on the GPU in the fragment shader. C only sets the uniforms, which are the
+bounds, the image size, `max_iter`, and (for Julia) `c`. Mandelbrot and Julia
+use the same color function and the same uniform names, so a change to one
+shader's coloring or bounds mapping should usually be made to the other too.
+
+Known limits to keep in mind:
+
+- The shader uses 32-bit `float` for bounds and iteration, so zooming very
+  deep will show precision artifacts.
+- The Julia constant `c` is fixed in `main.c`. There is no input to change it
+  yet. Changing it later means editing `JuliaFractalParams.c`, then calling
+  `load_julia_shader` again or setting `julia_c` on the existing shader.
+- `main.c` only opens the Julia fractal. `load_mandelbrot_shader` is
+  implemented but not used by the driver yet.
+
+The project owner is learning C, raylib, GLSL, and fractal mathematics,
+especially complex numbers. Treat this as a learning project: help them
+understand the ideas and build the implementation themselves.
 
 ## How to help
 
@@ -44,11 +80,13 @@ build the implementation themselves.
   will do, then use that to build understanding. Do not make help needlessly
   cryptic or withhold a direct answer when they ask for one.
 - Favor clear, idiomatic C and explain unfamiliar patterns (types, pointers,
-  memory ownership, headers, and error handling) when they arise.
-- For raylib work, introduce rendering concepts step by step and connect them
-  to the existing fractal calculations rather than replacing those calculations
-  without reason.
-- Preserve working Mandelbrot, Julia, and terminal functionality unless the
-  owner explicitly asks to change it. Avoid unrelated refactors.
-- Do not assume build commands, raylib setup, or project conventions; inspect
-  the repository before relying on them.
+  structs embedded by value, headers, error handling, and shader uniforms)
+  when they arise.
+- For raylib and GLSL work, introduce concepts step by step and connect them to
+  the existing math rather than replacing it without reason.
+- Preserve working Mandelbrot and Julia functionality unless the owner
+  explicitly asks to change it. Avoid unrelated refactors.
+- Check `make` after C changes. The project builds with no warnings today, so
+  keep it that way.
+- Inspect the repository before relying on build commands or project
+  conventions; this file can go stale.
