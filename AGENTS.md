@@ -43,15 +43,46 @@ Files:
 - `src/shaders/julia.fs`: the Julia fragment shader. It is a copy of the
   Mandelbrot shader, except `z` starts at the pixel's coordinate, `c` is read
   from the `julia_c` uniform (vec2), and it iterates with that constant `c`.
-- `src/main.c`: the driver and example of using the library. It builds a
-  `JuliaFractalParams` (2560x1440, re in [-2, 2], im in [-1, 1],
-  `max_iter = 8000`, `c = -0.8 + 0.156i`), loads the Julia shader, and runs the
-  window loop.
-  - While the mouse is moving, it draws a live preview at `PREVIEW_ITER = 2000`.
-  - After input has been idle for 0.2 s, it renders once at `max_iter` into a
-    cached `RenderTexture2D` and draws that until the view changes.
+- `src/render.h` / `src/render.c`: the window layer.
+  - `render_julia(w, h, max_iter, c)` and `render_mandelbrot(w, h, max_iter)`
+    open a window, load the shader, run the interactive loop, and return 0 on
+    success. They take plain values and know nothing about the CLI.
+  - Both use one static loop, `run_fractal_window`. While the mouse is moving,
+    it draws a live preview at `min(max_iter, PREVIEW_ITER)` with
+    `PREVIEW_ITER = 20000`. After input has been idle for 0.2 s, it renders
+    once at the full `max_iter` into a cached `RenderTexture2D` and draws that
+    until the view changes. The preview cap is only for responsiveness. The
+    final render is not capped.
+  - Mandelbrot view: re in [-2, 2], im in [-1, 1]. Julia uses the same bounds.
+- `src/main.c`: the CLI. It parses `list` and `render` commands and flags into
+  an `Args` struct. `Args` holds `RenderFlags` (size, max_iter), a
+  `FractalArgs` (fractal parameters only, currently `julia_c`), and a pointer
+  to the chosen `FractalInfo`. `parse_args` returns false on any bad command,
+  subject, fractal, flag, or value after printing an error to stderr, and
+  `main` exits 1 without running anything. `-h` shows help and exits 0.
+  - Defaults: 1920x1080 window, `max_iter = 20000`, Julia `c = -0.8 + 0.156i`.
+    `main()` sets these before parsing, so `FractalArgs` never holds "unset".
+  - Flags: `-s/--size WxH`, `-i/--max-iter n`, `-c/--julia-c re,im`,
+    `-v/--verbose`, `-h/--help`.
+  - Fractal registry: `FRACTALS[]` maps each name to a render adapter. The
+    parser looks names up there, error messages and `list fractal` read the
+    names from there, and `execute_cmd` calls the adapter. Adding a fractal
+    means writing an adapter and adding one row. Do not hardcode fractal names
+    anywhere else.
+  - Option checking is not implemented yet. `-c` is accepted for any render
+    and ignored by fractals that do not use it (e.g. `render mandelbrot -c 1,0`
+    runs normally). This will be redesigned later.
+  - Project scope is not just Julia and Mandelbrot. Do not write messages,
+    comments, or docs that assume only those two exist.
+- Conventions for CLI and params:
+  - `FractalArgs` holds fractal parameters only (values with defaults). Do not
+    add flags, "was given" markers, or other CLI bookkeeping to it. Track that
+    kind of state in `Args` if it is ever needed.
+  - The render layer (`render.*`) takes plain values and does not depend on CLI
+    types.
 - `src/shaders/mandelbrot.fs` and `src/shaders/julia.fs` are loaded by path at
-  runtime. They are not compiled into the binary.
+  runtime. They are not compiled into the binary. The loop runs `i < max_iter`
+  with no fixed cap.
 - `README.md`: a short project description and a Julia screenshot.
 
 Data flow: the pixel-to-complex-number mapping and the escape-count loop run
@@ -64,11 +95,11 @@ Known limits to keep in mind:
 
 - The shader uses 32-bit `float` for bounds and iteration, so zooming very
   deep will show precision artifacts.
-- The Julia constant `c` is fixed in `main.c`. There is no input to change it
-  yet. Changing it later means editing `JuliaFractalParams.c`, then calling
-  `load_julia_shader` again or setting `julia_c` on the existing shader.
-- `main.c` only opens the Julia fractal. `load_mandelbrot_shader` is
-  implemented but not used by the driver yet.
+- Julia's `c` comes from `-c/--julia-c` in the CLI, or the default in
+  `main.c`. The render layer receives it as a parameter.
+- Options are not validated per fractal yet (see the `main.c` notes above).
+- The Mandelbrot view is fixed (no CLI knobs yet). The window aspect ratio is
+  not corrected: the re/im range is fixed, so non-1920x1080 sizes stretch.
 
 The project owner is learning C, raylib, GLSL, and fractal mathematics,
 especially complex numbers. Treat this as a learning project: help them

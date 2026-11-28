@@ -1,9 +1,13 @@
+#include "render.h"
 #include "fractal.h"
 #include "raylib.h"
 #include <math.h>
 #include <stdbool.h>
+#include <stdio.h>
 
 #define BACKGROUND_COLOR RAYWHITE
+#define JULIA_SHADER_PATH "./src/shaders/julia.fs"
+#define MANDELBROT_SHADER_PATH "./src/shaders/mandelbrot.fs"
 
 static void update_view_bounds(BaseFractalParam *view, double re_center,
                                double im_center, double s) {
@@ -22,32 +26,16 @@ static void draw_fullscreen_quad(const FractalShader *f, int w, int h) {
     EndShaderMode();
 }
 
-int draw(void) {
-    const int screen_width = 1920;
-    const int screen_height = 1080;
-
-    InitWindow(screen_width, screen_height, "Cractal");
-    SetTargetFPS(60);
-
-    JuliaFractalParams julia = {.base =
-                                    {
-                                        .width = screen_width,
-                                        .height = screen_height,
-                                        .re_min = -2,
-                                        .re_max = 2,
-                                        .im_min = -1,
-                                        .im_max = 1,
-                                        .max_iter = 50000,
-                                    },
-                                .c = 0.285 + 0.01 * I};
-    BaseFractalParam *view = &julia.base;
+// Runs the interactive loop for an already-open window and loaded shader.
+// `view` holds the starting bounds; it is updated as the user pans and zooms.
+static void run_fractal_window(FractalShader *fractal, BaseFractalParam *view) {
+    const int screen_width = view->width;
+    const int screen_height = view->height;
 
     double re_center = (view->re_min + view->re_max) / 2.0;
     double im_center = (view->im_min + view->im_max) / 2.0;
     double s = (view->re_max - view->re_min) / (view->width - 1);
     update_view_bounds(view, re_center, im_center, s);
-
-    FractalShader fractal = load_julia_shader("./src/shaders/julia.fs", &julia);
 
     // Cached full-quality render, redrawn only when the view settles
     RenderTexture2D full_render =
@@ -94,9 +82,9 @@ int draw(void) {
 
         // Full-quality render once, after input settles
         if (settled && !full_render_valid) {
-            update_fractal_shader(&fractal, view);
+            update_fractal_shader(fractal, view);
             BeginTextureMode(full_render);
-            draw_fullscreen_quad(&fractal, screen_width, screen_height);
+            draw_fullscreen_quad(fractal, screen_width, screen_height);
             EndTextureMode();
             full_render_valid = true;
         }
@@ -110,16 +98,75 @@ int draw(void) {
             Rectangle src = {0, 0, (float)screen_width, -(float)screen_height};
             DrawTextureRec(full_render.texture, src, (Vector2){0, 0}, WHITE);
         } else {
-            // Live low-iteration preview while interacting
+            // Live low-iteration preview while interacting. Never more
+            // iterations than the final render.
             BaseFractalParam preview = *view;
-            preview.max_iter = PREVIEW_ITER;
-            update_fractal_shader(&fractal, &preview);
-            draw_fullscreen_quad(&fractal, screen_width, screen_height);
+            preview.max_iter = view->max_iter < PREVIEW_ITER
+                                   ? view->max_iter
+                                   : PREVIEW_ITER;
+            update_fractal_shader(fractal, &preview);
+            draw_fullscreen_quad(fractal, screen_width, screen_height);
         }
         EndDrawing();
     }
 
     UnloadRenderTexture(full_render);
+}
+
+int render_julia(int w, int h, int max_iter, double complex c) {
+    JuliaFractalParams julia = {.base =
+                                    {
+                                        .width = w,
+                                        .height = h,
+                                        .re_min = -2,
+                                        .re_max = 2,
+                                        .im_min = -1,
+                                        .im_max = 1,
+                                        .max_iter = max_iter,
+                                    },
+                                .c = c};
+
+    InitWindow(w, h, "Cractal - Julia");
+    SetTargetFPS(60);
+
+    FractalShader fractal = load_julia_shader(JULIA_SHADER_PATH, &julia);
+    if (fractal.shader.id == 0) {
+        fprintf(stderr, "error: could not load %s\n", JULIA_SHADER_PATH);
+        CloseWindow();
+        return 1;
+    }
+
+    run_fractal_window(&fractal, &julia.base);
+
+    UnloadShader(fractal.shader);
+    CloseWindow();
+    return 0;
+}
+
+int render_mandelbrot(int w, int h, int max_iter) {
+    MandelbrotFractalParams mandelbrot = {.base = {
+                                              .width = w,
+                                              .height = h,
+                                              .re_min = -2,
+                                              .re_max = 2,
+                                              .im_min = -1,
+                                              .im_max = 1,
+                                              .max_iter = max_iter,
+                                          }};
+
+    InitWindow(w, h, "Cractal - Mandelbrot");
+    SetTargetFPS(60);
+
+    FractalShader fractal =
+        load_mandelbrot_shader(MANDELBROT_SHADER_PATH, &mandelbrot);
+    if (fractal.shader.id == 0) {
+        fprintf(stderr, "error: could not load %s\n", MANDELBROT_SHADER_PATH);
+        CloseWindow();
+        return 1;
+    }
+
+    run_fractal_window(&fractal, &mandelbrot.base);
+
     UnloadShader(fractal.shader);
     CloseWindow();
     return 0;
