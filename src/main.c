@@ -119,7 +119,7 @@ void show_prompt() {
         "       fractal visualizer\n\n"
         "Usage:\n  cractal [command] [OPTIONS]\n\n"
         "Commands:\n"
-        "  list [item] [OPTIONS]\n"
+        "  list [fractal|theme] [OPTIONS]\n"
         "  render [fractal] [RENDER OPTIONS] [FRACTAL OPTIONS]\n\n"
         "Basic Options:\n"
         "  -h --help\tDisplay help info\n"
@@ -127,7 +127,9 @@ void show_prompt() {
         "Render Options:\n"
         "  -s --size\tSpecify output window size, e.g. --size "
         "1920x1080\n"
-        "  -i --max-iter\tSpecify max iterations to run the fractal function\n";
+        "  -i --max-iter\tSpecify max iterations to run the fractal function\n"
+        "Fractal Options:\n"
+        "  -c --julia-c\tJulia constant as re,im, e.g. --julia-c -0.8,0.156\n";
 
     printf("%s\n", prompt);
 }
