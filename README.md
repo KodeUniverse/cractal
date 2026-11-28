@@ -1,4 +1,4 @@
-# Cractal
+# cractal
 
 A simple fractal visualizer written in plain C that runs on the GPU with fragment shaders.
 
