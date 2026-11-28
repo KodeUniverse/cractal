@@ -1,13 +1,21 @@
+#include <inttypes.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
+#define MAX_DIM 15360
 
 typedef struct {
     bool help;
     bool verbose;
 } BasicFlags;
 
-typedef int WindowSize[2];
+typedef struct {
+    int width;
+    int height;
+} WindowSize;
 
 typedef struct {
     WindowSize size;
@@ -15,8 +23,8 @@ typedef struct {
 } RenderFlags;
 
 typedef struct {
-    BasicFlags flags;
-    RenderFlags render_flags;
+    BasicFlags basic;
+    RenderFlags render;
 } Flags;
 
 const char *FRACTAL_LIST[2] = {"mandelbrot", "julia"};
@@ -52,35 +60,72 @@ void show_prompt() {
     printf("%s\n", prompt);
 }
 
-void parse_args(int argc, char **argv, Flags flags) {
+static bool size_arg_convert(const char *arg, WindowSize *out) {
 
-    for (int i = 1; i < argc; i++) {
-        char *arg = argv[i];
-        if (strcmp(arg, "list") == 0)
-            list_fractals();
-        else if (strcmp(arg, "render") == 0) {
-            // rendering path here
-        } else if (strcmp(arg, "-h") == 0 || strcmp(arg, "--help") == 0) {
-            show_prompt();
-        } else if (strcmp(arg, "-v") == 0 || strcmp(arg, "--verbose") == 0) {
-            flags.verbose = true;
-        } else if (strcmp(arg, "-s") == 0 || strcmp(arg, "--size") == 0) {
-            // need to collect the next arg and update WindowSize
-        } else {
-            show_prompt();
+    char *width_end, *height_end;
+    long width_l = strtol(arg, &width_end, 10);
+
+    if (*width_end != 'x') {
+        return false;
+    }
+
+    long height_l = strtol(width_end + 1, &height_end, 10);
+
+    if (*height_end != '\0') {
+        return false;
+    }
+
+    if ((width_l <= 0 || width_l > MAX_DIM) ||
+        (height_l <= 0 || height_l > MAX_DIM)) {
+        return false;
+    }
+    *out = (WindowSize){.width = (int)width_l, .height = (int)height_l};
+    return true;
+}
+
+void parse_args(int argc, char **argv, Flags *flags) {
+
+    char *cmd = argv[1];
+    if (strcmp(cmd, "list") != 0 && strcmp(cmd, "render") != 0) {
+        show_prompt();
+    } else {
+        for (int i = 2; i < argc; i++) {
+            char *arg = argv[i];
+            if (strcmp(arg, "-h") == 0 || strcmp(arg, "--help") == 0) {
+                show_prompt();
+            } else if (strcmp(arg, "-v") == 0 ||
+                       strcmp(arg, "--verbose") == 0) {
+                flags->basic.verbose = true;
+            } else if (strcmp(arg, "-s") == 0 || strcmp(arg, "--size") == 0) {
+                if (i + 1 >= argc) {
+                    show_prompt();
+                } else {
+                    char *next_arg = argv[++i];
+                    WindowSize size;
+                    if (!size_arg_convert(next_arg, &size))
+                        show_prompt();
+                    else {
+                        flags->render.size = size;
+                    }
+                }
+            } else {
+                show_prompt();
+            }
         }
     }
 }
+
 int main(int argc, char **argv) {
 
     BasicFlags basic = {false, false};
-    RenderFlags render = {1920, 1080, 20000};
-    Flags flags = {.flags = basic, .render_flags = render};
+    RenderFlags render = {.size = {.width = 1920, .height = 1080},
+                          .max_iter = 10000};
+    Flags flags = {.basic = basic, .render = render};
 
     if (argc == 1)
         show_prompt();
     else if (argc >= 2) {
-        parse_args(argc, argv);
+        parse_args(argc, argv, &flags);
     }
     return 0;
 }
